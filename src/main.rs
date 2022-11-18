@@ -29,20 +29,7 @@ fn main() {
                 // ----------Tomfoolery----------
 
                 let content = packet.payload().to_owned();
-                //version, padding, and extension, all of which don't matter to us
-                let vpe = &content[0..3];
-                // CRSC Counter, should be 0
-                let cc = &content[4..7];
-                //marker and payload type
-                let mp = &content[8..15];
-                //sequence number
-                let seq = &content[16..31];
-                //timestamp
-                let timest = &content[32..63];
-                // sync source identifiers
-                let ssrc = &content[64..95];
-                //data
-                let data = &content[96+32*cc..];
+                
 
 
             }
@@ -50,5 +37,40 @@ fn main() {
                 log::error!("Failed to read packet due to {}",e)
             }
         }
+    }
+}
+
+struct RTP {
+    vpec: u8,
+    mp: u8,
+    seq: u16,
+    timestamp:u32,
+    ssrc: u32,
+    csrcList: Vec<u8>,
+    data: Vec<u8>
+}
+impl RTP{
+    fn new(raw: Vec<u8>) -> RTP{
+        //version, padding, extension, CRSC count all of which don't matter to us
+        let vpec = &raw[0];
+        //marker and payload type
+        let mp = &raw[1];
+        //sequence number
+        let seq = &raw[2..4];
+        //timestamp
+        let timest = &raw[4..8];
+        // sync source identifiers
+        let ssrc = &raw[8..12];
+        //data
+        let data = &raw[12+4*cc..];
+        RTP { vpec: vpec.to_owned(), mp: mp.to_owned(), seq: RTP::byteToInt(seq), 
+            timestamp: (), ssrc: (), csrcList: (), data: () }
+    }
+    fn byteToInt(input: &[u8])->u32{
+        let mut out: u32=0;
+        for i in input.iter(){
+            out = out << 8 + i;
+        }
+        return out;
     }
 }
