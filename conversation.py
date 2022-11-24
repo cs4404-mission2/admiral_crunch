@@ -5,8 +5,12 @@ import audioop
 import io
 import threading 
 
+class convostore:
+    def __init__(self):
+        self.conversations = []
+        self.lock = threading.Lock()
+
 class conversation:
-    packets = []
     def __init__(self, pkt: Packet):
         self.src = pkt["IP"].src
         self.dst = pkt["IP"].dst
