@@ -1,5 +1,9 @@
 from scapy.all import * #just to supress IDE warnings
+import scapy.layers.rtp
 import logging
+import audioop
+import io
+import threading 
 
 class conversation:
     packets = []
@@ -8,10 +12,14 @@ class conversation:
         self.dst = pkt["IP"].dst
         self.enforce = False
         self.packets = []
-        match pkt["UDP"].payload.name:
+        self.buffer = io.BytesIO()
+        self.bufferLock = threading.Lock()
+
+        match pkt.lastlayer().name:
             case "RTP":
                 logging.warn("new conversation without SIP Hello!")
-            case "SIP":
+            case "Raw":
+                # Assume raw data is SIP
                 #TODO: sippy stuff
                 print("Not yet implimented")
 
@@ -36,17 +44,38 @@ class conversation:
         '''parses packet content and add to memory'''
         content = pkt.lastlayer()
         match content.name:
-            case "SIP" | "Raw":
-                self.parse_sip(content)
+            case "Raw":
+                if self.parse_sip(content) == "BYE":
+                    return False
             case "RTP":
                 self.parse_rtp(content)
             case _:
                 logging.error("attempting to add invalid packet")
+        return True
 
     def parse_sip(self, content):
         # we pretty much only have to look for SIP goodbye
-        print("Not yet implimented")
+        # Yoinked from pyvoip's SIP parse function
+        try:
+            headers = content.split(b"\r\n\r\n")[0]
+            headers_raw = headers.split(b"\r\n")
+            heading = headers_raw.pop(0)
+            return str(heading.split(b" ")[0], "utf8")
+        except IndexError:
+            logging.error("Cannot parse SIP Packet!")
+            return ""
+        
                 
     def parse_rtp(self, content: scapy.layers.rtp.RTP):
         # Convert RTP payload to linear sound
-        print("Not yet implimented")
+        # re-implimentation of pyvoip's RTP library
+        # Convert to linear audio
+        data = audioop.ulaw2lin(content.payload, 1)
+        data = audioop.bias(data, 1, 128)
+        # write to audio buffer
+        self.bufferLock.acquire()
+        curloc = self.buffer.tell()
+        self.buffer.write(data)
+        #reset the buffer to where the playhead last was
+        self.buffer.seek(curloc, 0)
+        self.bufferLock.release()
