@@ -4,10 +4,11 @@ import audioop
 from scapy.all import *
 from scapy.layers import inet, rtp
 import scapy.sendrecv
-import conversation
+from conversation import conversation
 from queue import Queue
 from threading import Thread
 import logging
+import speech_recognition as rec
 
 class convostore:
     def __init__(self):
@@ -49,13 +50,29 @@ def girlboss(tmp: Packet):
 
 def analysis(cstore: convostore):
     logging.info("starting analysis thread")
-    
+    keywords = [("press",0.8),("pound",0.8),("authenticator",0.8),("authentication",0.8)]
+    interp = rec.Recognizer()
     while True:
-        # Get packets from gatekeeper
-        tmp = None
-        
+        line: conversation
+        for line in cstore.conversations:
+            if not line.analysis_flag: continue
+            line.bufferLock.acquire()
+            stream = rec.AudioFile(line.buffer)
+            line.bufferLock.release()
+            stream.SAMPLE_RATE = 8000
+            stream.SAMPLE_WIDTH = 8
+            audio = interp.record(stream)
+            out:str = interp.recognize_sphinx(audio,keyword_entries=keywords)
+            logging.info("Speech recognition: ",out)
+            for key in keywords:
+                if key[0] in out:
+                    line.enforce = True
+        if len(cstore.conversations) == 0:
+            time.sleep(0.1)
 
 
+analysis_thread = threading.Thread(target=analysis, args=(cstore, ))
+analysis_thread.start()
 
 # Made up NIC names for now
 ## haha get it like nicknames but it's NICs i'm so funny

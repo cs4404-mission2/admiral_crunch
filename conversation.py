@@ -5,11 +5,6 @@ import audioop
 import io
 import threading 
 
-class convostore:
-    def __init__(self):
-        self.conversations = []
-        self.lock = threading.Lock()
-
 class conversation:
     def __init__(self, pkt: Packet):
         self.src = pkt["IP"].src
@@ -18,7 +13,7 @@ class conversation:
         self.packets = []
         self.buffer = io.BytesIO()
         self.bufferLock = threading.Lock()
-
+        self.analysis_flag = False
         match pkt.lastlayer().name:
             case "RTP":
                 logging.warn("new conversation without SIP Hello!")
@@ -71,6 +66,7 @@ class conversation:
         
                 
     def parse_rtp(self, content: scapy.layers.rtp.RTP):
+        self.analysis_flag = True
         # Convert RTP payload to linear sound
         # re-implimentation of pyvoip's RTP library
         # Convert to linear audio
@@ -78,8 +74,6 @@ class conversation:
         data = audioop.bias(data, 1, 128)
         # write to audio buffer
         self.bufferLock.acquire()
-        curloc = self.buffer.tell()
         self.buffer.write(data)
         #reset the buffer to where the playhead last was
-        self.buffer.seek(curloc, 0)
         self.bufferLock.release()
