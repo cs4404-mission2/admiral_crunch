@@ -11,20 +11,22 @@ class conversation:
         self.src = pkt["IP"].src
         self.dst = pkt["IP"].dst
         self.enforce = False
-        self.packets = []
         self.buffer = io.BytesIO()
         self.bufferLock = threading.Lock()
         self.framecount = 0
         match pkt.lastlayer().name:
             case "RTP":
-                logging.warn("new conversation without SIP Hello!")
+                logging.warn("new conversation without SIP Invite!")
             case "Raw":
+                if self.parse_sip(pkt.lastlayer().payload) == "INVITE":
+                    logging.info("Got new VOIP call from {} to {}".format(self.src,self.dst))
+            case _:
+                logging.error("Conversation started with bad packet")
                 # Assume raw data is SIP
-                #TODO: sippy stuff
-                print("Not yet implimented")
 
 
-    def get_enforce(self, pkt: Packet["UDP"]):
+
+    def get_enforce(self, pkt: Packet):
         '''Checks if conversation should be manipulated
         Returns: 0-packet does not correspond to this conversation
         1- packet corresponds and conversation is not enforcing
@@ -35,10 +37,16 @@ class conversation:
         except IndexError:
             logging.warning("Analysis thread: got bad packet!")
             return 0
-        if (self.src == ip1 and self.dst == ip2) or (self.src == ip2 and self.dst == ip1):
+        # Server to client communication 
+        if (self.src == ip1 and self.dst == ip2):
+            return 1
+        # Client to server communication
+        elif (self.src == ip2 and self.dst == ip1):
+            # we only want to inject RTP into client->server comms
             if self.enforce:
                 return 2
-            return 1
+        else:
+            return 0
     
     def add(self, pkt: Packet):
         '''parses packet content and add to memory'''
