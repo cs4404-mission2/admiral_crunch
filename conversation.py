@@ -4,6 +4,7 @@ import logging
 import audioop
 import io
 import threading 
+import wave 
 
 class conversation:
     def __init__(self, pkt: Packet):
@@ -13,7 +14,7 @@ class conversation:
         self.packets = []
         self.buffer = io.BytesIO()
         self.bufferLock = threading.Lock()
-        self.analysis_flag = False
+        self.framecount = 0
         match pkt.lastlayer().name:
             case "RTP":
                 logging.warn("new conversation without SIP Hello!")
@@ -66,7 +67,7 @@ class conversation:
         
                 
     def parse_rtp(self, content: scapy.layers.rtp.RTP):
-        self.analysis_flag = True
+        self.framecount += 1
         # Convert RTP payload to linear sound
         # re-implimentation of pyvoip's RTP library
         # Convert to linear audio
@@ -77,3 +78,36 @@ class conversation:
         self.buffer.write(data)
         #reset the buffer to where the playhead last was
         self.bufferLock.release()
+
+class girlboss:
+    def __init__(self):
+        f = wave.open('dtmf_files/full.wav', 'rb')
+        frames = f.getnframes()
+        data = f.readframes(frames)
+        f.close()
+        self.txbuff = io.BytesIO()
+        self.txbuff.write(data)
+        self.buffbak = self.txbuff
+    
+    def manipulate(self, pkt: Packet):
+        content = self.txbuff.read(160)
+        #try to read 1 packet worth of data
+        #if we don't have enough for a full packet, just let the OG packet through
+        if len(content) < 160:
+            logging.info("Done with DTMF transmission")
+            return pkt
+        # Encode payload for PCMU transmission
+        content = audioop.bias(content, 1, -128)
+        content = audioop.lin2ulaw(content, 1)
+        # Replace payload with DTMF code
+        pkt.lastlayer().remove_payload()
+        pkt.lastlayer().add_payload(content)
+        return pkt
+
+    def reset(self):
+        self.txbuff = self.buffbak
+
+class convostore:
+    def __init__(self):
+        self.conversations = []
+        self.lock = threading.Lock()
