@@ -13,7 +13,7 @@ cstore = convostore()
 gb = girlboss()
 
 def gatekeep(tmp: Packet):
-    global cstore
+    global cstore, girlboss
     '''decides how packets should flow through the bridge'''
     # Packet isn't VOIP, we don't care about it
     if tmp.lastlayer().name != "Raw" and tmp.lastlayer().name != "RTP":
@@ -21,6 +21,11 @@ def gatekeep(tmp: Packet):
 
     # Check if this is part of an existing sessionRTP
     for con in cstore.conversations:
+        if con.deleteme:
+            cstore.lock.acquire()
+            cstore.conversations.remove(con)
+            cstore.lock.release()
+            continue
         stat = con.get_enforce(tmp)
         # Conversation exists, not enforcing
         if stat == 1:

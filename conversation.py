@@ -5,7 +5,7 @@ import audioop
 import io
 import threading 
 import wave 
-
+PBX_IP = "0.0.0.0" #Replace with actual IP
 class conversation:
     def __init__(self, pkt: Packet):
         self.src = pkt["IP"].src
@@ -14,15 +14,12 @@ class conversation:
         self.buffer = io.BytesIO()
         self.bufferLock = threading.Lock()
         self.framecount = 0
-        match pkt.lastlayer().name:
-            case "RTP":
-                logging.warn("new conversation without SIP Invite!")
-            case "Raw":
+        self.deleteme = False #hacky but it works
+        if pkt.lastlayer().name == "Raw" and self.dst == PBX_IP:
                 if self.parse_sip(pkt.lastlayer().payload) == "INVITE":
-                    logging.info("Got new VOIP call from {} to {}".format(self.src,self.dst))
-            case _:
-                logging.error("Conversation started with bad packet")
-                # Assume raw data is SIP
+                    logging.info("Got new VOIP call from {}",self.src)
+                    return
+        self.deleteme = True
 
 
 
@@ -60,18 +57,6 @@ class conversation:
             case _:
                 logging.error("attempting to add invalid packet")
         return True
-
-    def parse_sip(self, content):
-        # we pretty much only have to look for SIP goodbye
-        # Yoinked from pyvoip's SIP parse function
-        try:
-            headers = content.split(b"\r\n\r\n")[0]
-            headers_raw = headers.split(b"\r\n")
-            heading = headers_raw.pop(0)
-            return str(heading.split(b" ")[0], "utf8")
-        except IndexError:
-            logging.error("Cannot parse SIP Packet!")
-            return ""
         
                 
     def parse_rtp(self, content: scapy.layers.rtp.RTP):

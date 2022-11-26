@@ -17,3 +17,4 @@ This program assumes you've gotten it in-path of a VOIP system. In our case, we 
 ## TODOs
 Add SIP invite handling
 do better with discerning sender/ reciever IP addresses
+REWRITE NEEDED: The speech recognition doesn't work lol
