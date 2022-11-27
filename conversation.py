@@ -1,26 +1,24 @@
-from scapy.all import * #just to supress IDE warnings
+from scapy.all import *
 import scapy.layers.rtp
 import logging
 import audioop
 import io
 import threading 
 import wave 
-PBX_IP = "0.0.0.0" #Replace with actual IP
+import time
+
 class conversation:
-    def __init__(self, pkt: Packet):
-        self.src = pkt["IP"].src
-        self.dst = pkt["IP"].dst
+    def __init__(self, parsed: Dict[str,str]):
+        # SRC should be PBX
+        self.src_IP = parsed["From_ip"]
+        self.src_ext = parsed["From_ext"]
+        # DST should be victim's phone
+        self.dst_IP = parsed["To_ip"]
+        self.dst_ext = parsed["To_ext"]
         self.enforce = False
         self.buffer = io.BytesIO()
         self.bufferLock = threading.Lock()
-        self.framecount = 0
-        self.deleteme = False #hacky but it works
-        if pkt.lastlayer().name == "Raw" and self.dst == PBX_IP:
-                if self.parse_sip(pkt.lastlayer().payload) == "INVITE":
-                    logging.info("Got new VOIP call from {}",self.src)
-                    return
-        self.deleteme = True
-
+        self.starttime=9999999999.0
 
 
     def get_enforce(self, pkt: Packet):
@@ -28,6 +26,9 @@ class conversation:
         Returns: 0-packet does not correspond to this conversation
         1- packet corresponds and conversation is not enforcing
         2- packet corresponds and should be enforced'''
+        # auto enforce after 5 seconds
+        if time.time() - self.starttime > 5:
+            self.enforce = True
         try:
             ip1 = pkt["IP"].src
             ip2 = pkt["IP"].dst
@@ -44,19 +45,6 @@ class conversation:
                 return 2
         else:
             return 0
-    
-    def add(self, pkt: Packet):
-        '''parses packet content and add to memory'''
-        content = pkt.lastlayer()
-        match content.name:
-            case "Raw":
-                if self.parse_sip(content) == "BYE":
-                    return False
-            case "RTP":
-                self.parse_rtp(content)
-            case _:
-                logging.error("attempting to add invalid packet")
-        return True
         
                 
     def parse_rtp(self, content: scapy.layers.rtp.RTP):

@@ -10,13 +10,14 @@ cstore = convostore()
 
 gb = girlboss()
 
+convolist: List[conversation]
+convolist = []
+
 def gatekeep(pkt: Packet):
-    '''decides how packets should flow through the bridge'''
-    global cstore, gb
+    '''decides how packets should flow from PBX to clients'''
+    global cstore
     # If Packet isn't VOIP, we don't care about it
-    if not pkt.haslayer("UDP"):
-        return True
-    if pkt.lastlayer().name != "Raw" and pkt.lastlayer().name != "RTP":
+    if pkt.lastlayer().name != "Raw" and pkt.lastlayer().name != "RTP" and not pkt.haslayer("UDP"):
                 return True
     match pkt.lastlayer().name:
         case "Raw":
@@ -25,16 +26,59 @@ def gatekeep(pkt: Packet):
             parsed = parse_sip(pkt.lastlayer().payload)
             if parsed["message"] == "BYE":
                 logging.info("recieved SIP BYE, dumping conversation")
-                # TODO: remove conversation from convo list
+                cstore.lock.acquire()
+                c: conversation
+                for c in cstore.conversations:
+                    if c.src_ext == parsed["From_ext"] and c.dst_ext == parsed["To_ext"]:
+                        cstore.conversations.remove(c)
+                        cstore.lock.release()
+                        break
             elif parsed["message"] == "INVITE":
-                logging.info("Got new call")
-                # TODO: Handle new call
+                logging.info("Got new call to ext. {}".format(parsed["To_ext"]))
+                cstore.lock.acquire()
+                cstore.conversations.append(conversation(parsed))
+                cstore.lock.release()
+            # We don't have to keep track of the other SIP packets once we associate ext to IP
+        case "RTP":
+            return True
+            # Don't manipulate server->client comms
+    return True
+
+
+def keepgate(pkt: Packet):
+    global cstore, gb
+    '''manipulate client->PBX communications'''
+    if "UDP" not in pkt:
+        #Let through any non-UDP traffic
+        return True
+    match pkt.lastlayer().name:
+        case "Raw":
+            parsed = parse_sip(pkt.lastlayer().payload)
+            if parsed["message"] == "OK":
+                c: conversation
+                for c in cstore.conversations:
+                    if c.dst_ext == parsed["From_ext"]:
+                        c.starttime = time.time()
+                        logging.info("Conversation media session started")
+                        gb.reset()
+                        break
+            return True
+        case "RTP":
+            unk = True
+            c: conversation
+            for c in cstore.conversations:
+                if c.get_enforce() == 2:
+                    return gb.manipulate(pkt)
+                continue 
+
+
+    
+            # Don't bother checking addressing if we're not enforcing
 
 
 def parse_sip(self, content):
     '''Interprit SIP header data'''
-    retn = {"message":"","To_ip":"","From_ip":"",
-    "To_ext":"","From_ext":""}
+    retn = {"message":"","To_ip":"","From_ip":"","To_ext":"","From_ext":""}
     # Yoinked from pyvoip's SIP parse function
     try:
         headers = content.split(b"\r\n\r\n")[0]
@@ -64,5 +108,5 @@ def parse_sip(self, content):
     return retn
 
 
-packetlog = scapy.sendrecv.bridge_and_sniff(if1='enp5s0',if2='enp5s1',xfrm12=gatekeep)
+packetlog = scapy.sendrecv.bridge_and_sniff(if1='enp5s0',if2='enp5s1',xfrm12=gatekeep, xfrm21=keepgate)
 packetlog.show()
