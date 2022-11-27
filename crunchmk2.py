@@ -24,8 +24,9 @@ def gatekeep(pkt: Packet):
                 return True
     match pkt.lastlayer().name:
         case "Raw":
-            # Assume raw packets are SIP since scapy can't understand SIP
-            # Future: maybe select by port number?
+            # Check that packet is using SIP Port #
+            if pkt.lastlayer().getfieldval("dport") != 5060:
+                return True
             parsed = parse_sip(pkt.lastlayer().payload)
             if parsed["message"] == "BYE":
                 logging.info("recieved SIP BYE, dumping conversation")
