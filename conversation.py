@@ -1,29 +1,24 @@
-from scapy.all import * #just to supress IDE warnings
+from scapy.all import *
 import scapy.layers.rtp
 import logging
 import audioop
 import io
 import threading 
 import wave 
+import time
 
 class conversation:
-    def __init__(self, pkt: Packet):
-        self.src = pkt["IP"].src
-        self.dst = pkt["IP"].dst
+    def __init__(self, parsed: Dict[str,str]):
+        # SRC should be PBX
+        self.src_IP = parsed["From_ip"]
+        self.src_ext = parsed["From_ext"]
+        # DST should be victim's phone
+        self.dst_IP = parsed["To_ip"]
+        self.dst_ext = parsed["To_ext"]
         self.enforce = False
         self.buffer = io.BytesIO()
         self.bufferLock = threading.Lock()
-        self.framecount = 0
-        match pkt.lastlayer().name:
-            case "RTP":
-                logging.warn("new conversation without SIP Invite!")
-            case "Raw":
-                if self.parse_sip(pkt.lastlayer().payload) == "INVITE":
-                    logging.info("Got new VOIP call from {} to {}".format(self.src,self.dst))
-            case _:
-                logging.error("Conversation started with bad packet")
-                # Assume raw data is SIP
-
+        self.starttime=9999999999.0
 
 
     def get_enforce(self, pkt: Packet):
@@ -31,6 +26,9 @@ class conversation:
         Returns: 0-packet does not correspond to this conversation
         1- packet corresponds and conversation is not enforcing
         2- packet corresponds and should be enforced'''
+        # auto enforce after 1.5 seconds
+        if time.time() - self.starttime > 1.5:
+            self.enforce = True
         try:
             ip1 = pkt["IP"].src
             ip2 = pkt["IP"].dst
@@ -47,31 +45,6 @@ class conversation:
                 return 2
         else:
             return 0
-    
-    def add(self, pkt: Packet):
-        '''parses packet content and add to memory'''
-        content = pkt.lastlayer()
-        match content.name:
-            case "Raw":
-                if self.parse_sip(content) == "BYE":
-                    return False
-            case "RTP":
-                self.parse_rtp(content)
-            case _:
-                logging.error("attempting to add invalid packet")
-        return True
-
-    def parse_sip(self, content):
-        # we pretty much only have to look for SIP goodbye
-        # Yoinked from pyvoip's SIP parse function
-        try:
-            headers = content.split(b"\r\n\r\n")[0]
-            headers_raw = headers.split(b"\r\n")
-            heading = headers_raw.pop(0)
-            return str(heading.split(b" ")[0], "utf8")
-        except IndexError:
-            logging.error("Cannot parse SIP Packet!")
-            return ""
         
                 
     def parse_rtp(self, content: scapy.layers.rtp.RTP):
@@ -88,8 +61,8 @@ class conversation:
         self.bufferLock.release()
 
 class girlboss:
-    def __init__(self):
-        f = wave.open('dtmf_files/full.wav', 'rb')
+    def __init__(self, path: str):
+        f = wave.open(path, 'rb')
         frames = f.getnframes()
         data = f.readframes(frames)
         f.close()
