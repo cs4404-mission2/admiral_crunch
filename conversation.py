@@ -26,8 +26,8 @@ class conversation:
         Returns: 0-packet does not correspond to this conversation
         1- packet corresponds and conversation is not enforcing
         2- packet corresponds and should be enforced'''
-        # auto enforce after 5 seconds
-        if time.time() - self.starttime > 5:
+        # auto enforce after 1.5 seconds
+        if time.time() - self.starttime > 1.5:
             self.enforce = True
         try:
             ip1 = pkt["IP"].src
@@ -61,8 +61,8 @@ class conversation:
         self.bufferLock.release()
 
 class girlboss:
-    def __init__(self):
-        f = wave.open('dtmf_files/full.wav', 'rb')
+    def __init__(self, path: str):
+        f = wave.open(path, 'rb')
         frames = f.getnframes()
         data = f.readframes(frames)
         f.close()

