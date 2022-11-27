@@ -20,7 +20,7 @@ def gatekeep(pkt: Packet):
     '''decides how packets should flow from PBX to clients'''
     global cstore
     # If Packet isn't VOIP, we don't care about it
-    if pkt.lastlayer().name != "Raw" and pkt.lastlayer().name != "RTP" and not pkt.haslayer("UDP"):
+    if (pkt.lastlayer().name != "Raw" and pkt.lastlayer().name != "RTP") or not pkt.haslayer("UDP"):
                 return True
     match pkt.lastlayer().name:
         case "Raw":
