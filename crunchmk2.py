@@ -27,7 +27,7 @@ def gatekeep(pkt: Packet):
             # Check that packet is using SIP Port #
             if pkt.lastlayer().getfieldval("dport") != 5060:
                 return True
-            parsed = parse_sip(pkt.lastlayer().payload)
+            parsed = parse_sip(pkt.lastlayer().load)
             if parsed["message"] == "BYE":
                 logging.info("recieved SIP BYE, dumping conversation")
                 cstore.lock.acquire()
@@ -64,7 +64,7 @@ def keepgate(pkt: Packet):
         return True
     match pkt.lastlayer().name:
         case "Raw":
-            parsed = parse_sip(pkt.lastlayer().payload)
+            parsed = parse_sip(pkt.lastlayer().load)
             if parsed["message"] == "OK":
                 c: conversation
                 for c in cstore.conversations:
