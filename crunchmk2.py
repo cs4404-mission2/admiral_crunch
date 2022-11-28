@@ -20,13 +20,11 @@ def gatekeep(pkt: Packet):
     '''decides how packets should flow from PBX to clients'''
     global cstore
     # If Packet isn't VOIP, we don't care about it
-    if (pkt.lastlayer().name != "Raw" and pkt.lastlayer().name != "RTP") or not pkt.haslayer("UDP"):
+    if  not pkt.haslayer("UDP"):
                 return True
-    match pkt.lastlayer().name:
-        case "Raw":
-            # Check that packet is using SIP Port #
-            if pkt.lastlayer().getfieldval("dport") != 5060:
-                return True
+    #Since all packets are classified as RAW, tell between them by port
+    match pkt.lastlayer().getfieldval("dport"):
+        case 5060:
             parsed = parse_sip(pkt.lastlayer().load)
             if parsed["message"] == "BYE":
                 logging.info("recieved SIP BYE, dumping conversation")
@@ -46,7 +44,8 @@ def gatekeep(pkt: Packet):
                 cstore.conversations.append(conversation(parsed))
                 cstore.lock.release()
             # We don't have to keep track of the other SIP packets once we associate ext to IP
-        case "RTP":
+        #RTP Does not use predictable port
+        case _:
             c: conversation
             for c in cstore.conversations:
                 if c.get_enforce() == 2:
@@ -62,8 +61,8 @@ def keepgate(pkt: Packet):
     if "UDP" not in pkt:
         #Let through any non-UDP traffic
         return True
-    match pkt.lastlayer().name:
-        case "Raw":
+    match pkt.lastlayer().getfieldval("dport"):
+        case 5060:
             parsed = parse_sip(pkt.lastlayer().load)
             if parsed["message"] == "OK":
                 c: conversation
@@ -74,7 +73,7 @@ def keepgate(pkt: Packet):
                         gb.reset()
                         break
             return True
-        case "RTP":
+        case _:
             c: conversation
             for c in cstore.conversations:
                 if c.get_enforce() == 2:

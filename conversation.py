@@ -1,5 +1,6 @@
 from scapy.all import *
-import scapy.layers.rtp
+from scapy.layers.inet import *
+from scapy.packet import Raw
 import logging
 import audioop
 import io
@@ -71,6 +72,7 @@ class girlboss:
         self.buffbak = self.txbuff
     
     def manipulate(self, pkt: Packet):
+        pkt = pkt["IP"]
         content = self.txbuff.read(160)
         #try to read 1 packet worth of data
         #if we don't have enough for a full packet, just let the OG packet through
@@ -80,10 +82,14 @@ class girlboss:
         # Encode payload for PCMU transmission
         content = audioop.bias(content, 1, -128)
         content = audioop.lin2ulaw(content, 1)
-        # Replace payload with DTMF code
-        pkt.lastlayer().remove_payload()
-        pkt.lastlayer().add_payload(content)
-        return pkt
+        # strip headers from og packet
+        header = pkt.lastlayer().load[0:12]
+        # add old header to new data
+        content = Raw(header + content)
+        newpkt = IP(src=pkt.src,dst=pkt.dst)/UDP(sport=pkt.payload.sport,sport=pkt.payload.dport)/content
+        
+        # rebuild packet to force checksum recalculation
+        return newpkt
 
     def reset(self):
         self.txbuff = self.buffbak
