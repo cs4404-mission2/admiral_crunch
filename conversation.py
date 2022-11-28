@@ -34,18 +34,13 @@ class conversation:
             ip1 = pkt["IP"].src
             ip2 = pkt["IP"].dst
         except IndexError:
-            logging.warning("Analysis thread: got bad packet!")
+            logging.warning("Analysis: got bad packet!")
             return 0
-        # Server to client communication 
-        if (self.src == ip1 and self.dst == ip2):
-            return 1
-        # Client to server communication
-        elif (self.src == ip2 and self.dst == ip1):
-            # we only want to inject RTP into client->server comms
+        if (self.src == ip1 and self.dst == ip2) or (self.src == ip2 and self.dst == ip1):
             if self.enforce:
                 return 2
-        else:
-            return 0
+            return 1
+        return 0
         
                 
     def parse_rtp(self, content: scapy.layers.rtp.RTP):
@@ -83,12 +78,22 @@ class girlboss:
         content = audioop.bias(content, 1, -128)
         content = audioop.lin2ulaw(content, 1)
         # strip headers from og packet
-        header = pkt.lastlayer().load[0:12]
+        header = self.parse_header(pkt.lastlayer().load[0:11])
         # add old header to new data
         content = Raw(header + content)
         #Build new packet to force checksum recalculation
         newpkt = IP(src=pkt.src,dst=pkt.dst)/UDP(sport=pkt.payload.sport,sport=pkt.payload.dport)/content
-        return newpkt
+        send(newpkt)
+
+    def parse_header(hdr: bytes) -> bytes:
+        garb = hdr[0:1] # data we don't care about
+        seq = int.from_bytes(hdr[2:3], byteorder="big") + 1
+        ts = int.from_bytes(hdr[4:7], byteorder="big") + 1000
+        ssrc = hdr[8:]
+        seq = seq.to_bytes(2,"big")
+        ts = ts.to_bytes(2,"big")
+        return garb + seq + ts + ssrc
+
 
     def reset(self):
         self.txbuff = self.buffbak

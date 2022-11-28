@@ -1,12 +1,10 @@
 #!/usr/bin/python3
 # Python rewrite of python rewrite of admiral crunch
 from scapy.all import *
-from scapy.layers import inet, rtp
-import scapy.sendrecv
 from conversation import *
 import logging
 
-SERVER_EXT = "0000" #Changeme
+SERVER_EXT = "10" #Changeme
 
 cstore = convostore()
 
@@ -21,7 +19,7 @@ def gatekeep(pkt: Packet):
     global cstore
     # If Packet isn't VOIP, we don't care about it
     if  not pkt.haslayer("UDP"):
-                return True
+                return
     #Since all packets are classified as RAW, tell between them by port
     match pkt.lastlayer().getfieldval("dport"):
         case 5060:
@@ -38,7 +36,15 @@ def gatekeep(pkt: Packet):
             elif parsed["message"] == "INVITE":
                 if parsed["From_ext"] != SERVER_EXT:
                     # Ignore calls that aren't from auth server
-                    return True
+                    return 
+            elif parsed["message"] == "OK":
+                c: conversation
+                for c in cstore.conversations:
+                    if c.dst_ext == parsed["From_ext"]:
+                        c.starttime = time.time()
+                        logging.info("Conversation media session started")
+                        gb.reset()
+                        return
                 logging.info("Got new call to ext. {}".format(parsed["To_ext"]))
                 cstore.lock.acquire()
                 cstore.conversations.append(conversation(parsed))
@@ -49,40 +55,10 @@ def gatekeep(pkt: Packet):
             c: conversation
             for c in cstore.conversations:
                 if c.get_enforce() == 2:
-                    return gb.manipulateg(pkt)
+                     gb.manipulateg(pkt)
             # After we start packet injection, change incoming audio to innocuous
             # So client won't hear login confirmation message
-    return True
 
-
-def keepgate(pkt: Packet):
-    global cstore, gb
-    '''manipulate client->PBX communications'''
-    if "UDP" not in pkt:
-        #Let through any non-UDP traffic
-        return True
-    match pkt.lastlayer().getfieldval("dport"):
-        case 5060:
-            parsed = parse_sip(pkt.lastlayer().load)
-            if parsed["message"] == "OK":
-                c: conversation
-                for c in cstore.conversations:
-                    if c.dst_ext == parsed["From_ext"]:
-                        c.starttime = time.time()
-                        logging.info("Conversation media session started")
-                        gb.reset()
-                        break
-            return True
-        case _:
-            c: conversation
-            for c in cstore.conversations:
-                if c.get_enforce() == 2:
-                    return bg.manipulate(pkt)
-                continue 
-
-
-    
-            # Don't bother checking addressing if we're not enforcing
 
 
 def parse_sip(self, content):
@@ -117,5 +93,5 @@ def parse_sip(self, content):
     return retn
 
 
-packetlog = scapy.sendrecv.bridge_and_sniff(if1='enp5s0',if2='enp5s1',xfrm12=gatekeep, xfrm21=keepgate)
+packetlog = sniff(prn = gatekeep)
 packetlog.show()
