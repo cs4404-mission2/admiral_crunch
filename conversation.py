@@ -86,9 +86,8 @@ class girlboss:
         header = pkt.lastlayer().load[0:12]
         # add old header to new data
         content = Raw(header + content)
+        #Build new packet to force checksum recalculation
         newpkt = IP(src=pkt.src,dst=pkt.dst)/UDP(sport=pkt.payload.sport,sport=pkt.payload.dport)/content
-        
-        # rebuild packet to force checksum recalculation
         return newpkt
 
     def reset(self):
